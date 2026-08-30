@@ -60,8 +60,6 @@
     view.innerHTML =
       '<div class="hero"><div class="wrap">' +
       "<h1>把貓畫在台中的街道上</h1>" +
-      "<p>每一條都是封閉環狀路線，每個轉折都落在真的走得到的路口上。" +
-      "挑一條、下載 GPX，跑完打開軌跡就是一隻貓。</p>" +
       '<div class="stats">' +
       [[IDX.routes.length, "條路線"],
       [Object.keys(IDX.districts).length, "個行政區"],
@@ -73,8 +71,7 @@
 
       '<div class="filters"><div class="wrap">' +
       '<div class="frow"><span class="flabel">行政區</span>' +
-      chips("district", Object.keys(d).map(function (k) { return [k, d[k].name]; }), "全部") +
-      "</div>" +
+      districtSelect(d) + "</div>" +
       '<div class="frow"><span class="flabel">貓形</span>' +
       chips("shape", Object.keys(SHAPES || {}).map(function (k) {
         return [k, SHAPES[k].name];
@@ -101,6 +98,33 @@
         window.scrollTo({ top: 0 });
       });
     });
+    var sel = document.getElementById("f-district");
+    if (sel) sel.addEventListener("change", function () {
+      F.district = sel.value;
+      renderList();
+      window.scrollTo({ top: 0 });
+    });
+  }
+
+  /* 29 個行政區用標籤攤開沒人選得下去，改成依區位分組的下拉選單 */
+  var GROUP_ORDER = ["中心市區", "屯區", "近郊", "海線", "山城線", "其他"];
+  function districtSelect(d) {
+    var by = {};
+    Object.keys(d).forEach(function (k) {
+      var g = d[k].group || "其他";
+      (by[g] = by[g] || []).push(k);
+    });
+    var h = '<select id="f-district" class="fsel">' +
+      '<option value=""' + (F.district === "" ? " selected" : "") + ">全部行政區</option>";
+    GROUP_ORDER.filter(function (g) { return by[g]; }).forEach(function (g) {
+      h += '<optgroup label="' + esc(g) + '">';
+      by[g].forEach(function (k) {
+        h += '<option value="' + k + '"' + (F.district === k ? " selected" : "") + ">" +
+          esc(d[k].name) + "</option>";
+      });
+      h += "</optgroup>";
+    });
+    return h + "</select>";
   }
 
   function card(r) {

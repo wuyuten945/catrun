@@ -7,7 +7,7 @@
   var W = null;              // Worker
   var SHAPE = null;          // 描好的圖形（正規化點列）
   var SHAPE_NAME = "";
-  var PICK = {};             // 選了哪些行政區
+  var SELD = "south";        // 選到的行政區，或 "*區位名" 表示整個區位一起比
   var RESULTS = [];
   var SEL = 0;
 
@@ -261,10 +261,18 @@
   };
 
   /* ── 畫面 ── */
+  var NETIDX = null;      // net/index.json：全部 29 個行政區
   window.renderDesign = function (IDX) {
-    var d = IDX.districts;
-    Object.keys(d).forEach(function (k) { if (!(k in PICK)) PICK[k] = false; });
-    if (!Object.keys(PICK).some(function (k) { return PICK[k]; })) PICK.south = true;
+    if (!NETIDX) {
+      fetch("net/index.json").then(function (r) { return r.json(); })
+        .then(function (j) { NETIDX = j.districts; window.renderDesign(IDX); })
+        .catch(function () { NETIDX = IDX.districts; window.renderDesign(IDX); });
+      document.getElementById("view").innerHTML =
+        '<main><div class="wrap"><p>載入行政區清單…</p></div></main>';
+      return;
+    }
+    var d = NETIDX;
+    if (!d[SELD] && SELD.charAt(0) !== "*") SELD = Object.keys(d)[0];
     var view = document.getElementById("view");
     view.innerHTML =
       '<div class="hero"><div class="wrap">' +
@@ -299,8 +307,8 @@
       "</div></div>" +
 
       '<div class="panel hide" id="dz-step2"><h3>二、選行政區與距離</h3><div class="inner">' +
-      '<label style="font-size:12px;color:var(--ink-3)">行政區（可複選，多選會逐區規劃並排名）</label>' +
-      '<div class="dchips" id="dz-chips" style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 14px"></div>' +
+      '<label style="font-size:12px;color:var(--ink-3)">行政區</label>' +
+      '<div id="dz-chips" style="margin:6px 0 14px"></div>' +
       '<label style="font-size:12px;color:var(--ink-3)">距離</label>' +
       '<select id="dz-level" style="width:100%;max-width:320px;padding:10px;border:1px solid var(--line);' +
       'border-radius:9px;background:var(--surface);color:var(--ink);margin-bottom:14px">' +
@@ -317,14 +325,56 @@
       '<div id="dz-out"></div>' +
       "</div></main>";
 
+    var ORDER = ["中心市區", "屯區", "近郊", "海線", "山城線", "其他"];
+    /* 29 個行政區用標籤攤開沒人選得下去，改成下拉。
+       單選為主；跨區比較保留成選單最上面的「整個區位一起比」，
+       選了那個就一次排該區位的每一區再排名。 */
     function chips() {
-      $("dz-chips").innerHTML = Object.keys(d).map(function (k) {
-        return '<button class="chip" data-k="' + k + '" aria-pressed="' + (!!PICK[k]) + '">' +
-          esc(d[k].name) + "</button>";
-      }).join("");
-      Array.prototype.forEach.call($("dz-chips").querySelectorAll(".chip"), function (b) {
-        b.onclick = function () { PICK[b.dataset.k] = !PICK[b.dataset.k]; chips(); };
+      var by = {};
+      Object.keys(d).forEach(function (k) {
+        var g = d[k].group || "其他";
+        (by[g] = by[g] || []).push(k);
       });
+      var groups = ORDER.filter(function (g) { return by[g]; });
+      var h = '<select id="dz-sel" class="fsel" style="width:100%;max-width:360px;' +
+        'padding:11px 34px 11px 14px;border-radius:9px;font-size:15px">';
+      h += '<optgroup label="比較多個區（每多一區約多 40 秒）">';
+      groups.forEach(function (g) {
+        h += '<option value="*' + esc(g) + '">' + esc(g) + " ── " + by[g].length +
+          " 區一起比較</option>";
+      });
+      h += "</optgroup>";
+      groups.forEach(function (g) {
+        h += '<optgroup label="' + esc(g) + '">';
+        by[g].forEach(function (k) {
+          var no = d[k].recommended === false;
+          h += '<option value="' + k + '"' + (SELD === k ? " selected" : "") + ">" +
+            esc(d[k].name) + (no ? "（山區，不建議）" : "") + "</option>";
+        });
+        h += "</optgroup>";
+      });
+      $("dz-chips").innerHTML = h + "</select>" +
+        '<div id="dz-dnote" style="font-size:13px;color:var(--ink-3);margin-top:8px"></div>';
+      var sel = $("dz-sel");
+      sel.value = SELD;
+      sel.onchange = function () { SELD = sel.value; dnote(); };
+      dnote();
+    }
+    function dnote() {
+      var el = $("dz-dnote");
+      if (!el) return;
+      if (SELD.charAt(0) === "*") {
+        var g = SELD.slice(1);
+        var ks = Object.keys(d).filter(function (k) { return (d[k].group || "其他") === g; });
+        el.textContent = "會排 " + ks.length + " 個區再依綜合評分排名，約 " +
+          Math.round(ks.length * 0.7) + " 分鐘。";
+      } else {
+        var x = d[SELD];
+        el.innerHTML = x ? (esc(x.traits) +
+          (x.recommended === false
+            ? '<br/><b style="color:var(--route)">全區山地，爬升遠超規格書上限，排出來的路線分數會很低。</b>'
+            : "")) : "";
+      }
     }
     chips();
     if (SHAPE) { $("dz-step2").classList.remove("hide"); }
@@ -349,12 +399,16 @@
       });
     };
     $("dz-run").onclick = function () {
-      var ks = Object.keys(d).filter(function (k) { return PICK[k]; });
+      var ks = SELD.charAt(0) === "*"
+        ? Object.keys(d).filter(function (k) {
+          return (d[k].group || "其他") === SELD.slice(1);
+        })
+        : [SELD];
       $("dz-err").innerHTML = "";
       if (!SHAPE) { $("dz-err").innerHTML = '<div class="callout"><b>還沒描圖</b></div>'; return; }
       if (!ks.length) {
         $("dz-err").innerHTML = '<div class="callout" style="margin:12px 0 0">' +
-          "<b>還沒選行政區</b><p>至少選一個。</p></div>";
+          "<b>還沒選行政區</b></div>";
         return;
       }
       setBusy(true);

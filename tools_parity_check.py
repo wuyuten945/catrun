@@ -35,12 +35,17 @@ def main():
     pts, info = trace(IMG, close_px=6, target_pts=64)
     print("   點數 %d、寬高比 %.3f" % (len(pts), info["寬高比"]))
 
-    # 把灰階影像原樣交給 JS，兩邊才是吃同一份輸入
-    a = np.asarray(Image.open(IMG).convert("L"), dtype=np.float32)
+    # 把灰階影像原樣交給 JS，兩邊才是吃同一份輸入。
+    # 灰階值就是 0~255，用 base64 存 Uint8 即可——存成浮點數 JSON 會膨脹到好幾 MB，
+    # 大到讓人想刪掉它，結果測試就跑不動了（真的發生過）。
+    import base64
+    a = np.asarray(Image.open(IMG).convert("L"), dtype=np.uint8)
     with io.open(os.path.join(OUT, "parity_gray.json"), "w", encoding="utf-8") as f:
         json.dump({"w": int(a.shape[1]), "h": int(a.shape[0]),
-                   "gray": [float(x) for x in a.reshape(-1)]}, f)
-    print("   灰階影像 %dx%d 已輸出" % (a.shape[1], a.shape[0]))
+                   "b64": base64.b64encode(a.tobytes()).decode()}, f)
+    print("   灰階影像 %dx%d 已輸出（%.0f KB）"
+          % (a.shape[1], a.shape[0],
+             os.path.getsize(os.path.join(OUT, "parity_gray.json")) / 1024))
 
     print("2. 規劃基準（南區 × cat_hand × 標準級）")
     t0 = time.time()

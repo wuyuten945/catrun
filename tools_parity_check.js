@@ -49,8 +49,14 @@ function cmp(label, got, want, tol, unit) {
 (async () => {
   /* ── A. 描圖對照 ── */
   console.log('\nA. 描圖（同一張手繪圖）');
-  const g = JSON.parse(fs.readFileSync(path.join(ROOT, 'out', 'parity_gray.json'), 'utf8'));
-  const gray = Float32Array.from(g.gray);
+  const gp = path.join(ROOT, 'out', 'parity_gray.json');
+  if (!fs.existsSync(gp)) {
+    console.log('  找不到 out/parity_gray.json —— 請先跑 python tools_parity_check.py');
+    process.exit(1);
+  }
+  const g = JSON.parse(fs.readFileSync(gp, 'utf8'));
+  const bytes = Buffer.from(g.b64, 'base64');
+  const gray = Float32Array.from(bytes);
   const tr = traceImage(gray, g.w, g.h, 6, 64);
   cmp('寬高比', tr.info['寬高比'], EXP.trace.aspect, 0.06);
   cmp('簡化後點數', tr.info['簡化後點數'], EXP.trace.points, 12, ' 點');

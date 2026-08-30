@@ -1,0 +1,38 @@
+# Render Blueprint — 部署「貓行台中」公開靜態站
+# 用法：Render → New + → Blueprint → 選這個 repo → Apply。
+#       建好之後到服務的 Settings → Custom Domains 加 catrun.ego-intl.com，
+#       再到 GoDaddy 把 CNAME 指到 Render 給的目標網域。
+#
+# 為什麼是 Static Site 而不是 Web Service：
+#   排一條路線要 7~10 秒 CPU 與一份 160 MB 的路網。免費 Web Service 只有 0.1 CPU
+#   與 512 MB 記憶體，實際會慢到 1~2 分鐘、而且冷啟動還要 30 秒；開放給任何人觸發
+#   等於把 Overpass API 當公共提款機。所以路線一律離線先算好，這裡只負責發檔案。
+services:
+  - type: web
+    name: catrun
+    runtime: static
+    staticPublishPath: ./site
+    # 沒有建置步驟：site/ 底下就是最終成品
+    buildCommand: "echo static site - nothing to build"
+    pullRequestPreviewsEnabled: false
+    headers:
+      # 圖檔與軌跡檔內容變了檔名也會變，可以長快取
+      - path: /img/*
+        name: Cache-Control
+        value: public, max-age=2592000
+      - path: /gpx/*
+        name: Cache-Control
+        value: public, max-age=2592000
+      - path: /kml/*
+        name: Cache-Control
+        value: public, max-age=2592000
+      # 資料檔會隨著重跑產生器更新，短快取
+      - path: /data/*
+        name: Cache-Control
+        value: public, max-age=3600
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin

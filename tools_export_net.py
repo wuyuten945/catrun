@@ -108,6 +108,13 @@ def main():
     failed, t0 = [], time.time()
     for n, key in enumerate(DISTRICTS, 1):
         cfg = DISTRICTS[key]
+        if not cfg.get("recommended", True):
+            # 公開站不收：和平區實測爬升 1322 m（上限 44 m）、補給 0 分，路線不可用，
+            # 而它一個檔就 7.47 MB（23 萬節點）佔全部的 14%。
+            # 本機工具不受影響——那邊走 Overpass 快取，不看 site/net。
+            print("── [%d/%d] %s：不建議規劃，公開站不收" % (n, len(DISTRICTS), cfg["name"]),
+                  flush=True)
+            continue
         print("── [%d/%d] %s" % (n, len(DISTRICTS), cfg["name"]), flush=True)
         try:
             blob, side = export(key)

@@ -276,6 +276,7 @@
   function route() {
     var h = location.hash.replace(/^#/, "") || "/";
     if (h.indexOf("/r/") === 0) { renderRoute(h.slice(3)); }
+    else if (h === "/design") { window.renderDesign(IDX); }
     else if (h === "/shapes") { renderShapes(); }
     else if (h === "/about") { renderAbout(); }
     else { renderList(); }

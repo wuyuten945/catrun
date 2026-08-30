@@ -37,7 +37,8 @@ def signals_on_route(net, route, radius=35.0):
         return 0
     hit = set()
     for p in route.pts:
-        for i in net.sig_tree.query_ball_point((p[1], p[0]), radius / 100000.0 * 1.1):
+        for i in net.sig_tree.query_ball_point(
+                (p[1] * net._kx, p[0] * net._ky), radius):
             if hav(p, net.signals[i]) <= radius:
                 hit.add(i)
     return len(hit)

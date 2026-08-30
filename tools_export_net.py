@@ -1,0 +1,128 @@
+# -*- coding: utf-8 -*-
+"""把六個行政區的路網匯出成瀏覽器可直接使用的靜態檔。
+
+公開站要讓使用者自己上傳圖形、當場排路線，演算法就得搬進瀏覽器；
+瀏覽器沒辦法打 Overpass（會被當成公共提款機，也慢），所以路網要事先
+壓成緊湊格式放成靜態檔，使用者選到哪一區才下載哪一區。
+
+每區兩個檔：
+  net/<key>.bin   路網本體（二進位，見下方格式）
+  net/<key>.json  路名表與沿線設施（號誌／補給／轉運／地標／穿越點）
+
+.bin 格式（little-endian）：
+  magic "CRG2"                          4
+  n_nodes, n_edges                      u32 × 2
+  lat0, lon0                            f64 × 2      座標原點
+  nodes[n_nodes]  lat_off, lon_off      u32 × 2      百萬分之一度
+  edges[n_edges]  a, b                  u32 × 2      節點索引
+                  len_dm                u16          公寸
+                  safety_milli          u16          安全分 ×1000
+                  name_id               u16          路名索引（0=無名）
+                  flags                 u16          bit0-4 道路分級、bit5-6 照明
+"""
+import io
+import json
+import os
+import struct
+import sys
+
+sys.stdout.reconfigure(encoding="utf-8")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from catrun import planner                                  # noqa: E402
+from catrun.config import DISTRICTS, ROAD_SAFETY            # noqa: E402
+
+# 道路分級的索引表。JS 端要靠它判斷綠園道比例與幹道提醒，順序不能亂動——
+# 動了就得重新匯出所有區，否則舊檔會被解讀成別的道路類型。
+HW = ["footway", "path", "pedestrian", "steps", "cycleway", "living_street",
+      "track", "residential", "service", "unclassified", "tertiary",
+      "tertiary_link", "secondary", "secondary_link", "primary", "primary_link"]
+HW_IDX = {h: i for i, h in enumerate(HW)}
+LIT = {"": 0, "yes": 1, "no": 2}
+
+ROOT = os.path.dirname(os.path.abspath(__file__))
+OUTDIR = os.path.join(ROOT, "site", "net")
+
+
+def export(key, log=print):
+    net = planner.get_net(key)
+    G = net.G
+    ids = {n: i for i, n in enumerate(G.nodes())}
+    lat0 = min(net.coord[x][0] for x in ids)
+    lon0 = min(net.coord[x][1] for x in ids)
+
+    buf = bytearray(b"CRG2")
+    buf += struct.pack("<II", len(ids), G.number_of_edges())
+    buf += struct.pack("<dd", lat0, lon0)
+    for x in ids:
+        la, lo = net.coord[x]
+        buf += struct.pack("<II", int(round((la - lat0) * 1e6)),
+                           int(round((lo - lon0) * 1e6)))
+    names = [""]
+    nidx = {"": 0}
+    over = 0
+    for a, b, d in G.edges(data=True):
+        nm = d.get("name") or ""
+        if nm not in nidx:
+            nidx[nm] = len(names)
+            names.append(nm)
+        length = d["length"]
+        if length > 6553.5:
+            over += 1
+        flags = HW_IDX.get(d.get("hw", ""), 31) | (LIT.get(d.get("lit", ""), 0) << 5)
+        buf += struct.pack("<IIHHHH", ids[a], ids[b],
+                           min(65535, int(round(length * 10))),
+                           int(round(d["safety"] * 1000)),
+                           min(65535, nidx[nm]), flags)
+    if over:
+        log("   ⚠ %d 段超過 6553.5 公尺被截斷（長度欄位是 u16 公寸）" % over)
+
+    s, w, n, e = net.cfg["bbox"]
+    side = {
+        "key": key, "name": DISTRICTS[key]["name"],
+        "style": DISTRICTS[key]["style"], "traits": DISTRICTS[key]["traits"],
+        "aspect": DISTRICTS[key]["aspect"],
+        "bbox": [s, w, n, e],
+        "nodes": len(ids), "edges": G.number_of_edges(),
+        "hw": HW,
+        "names": names,
+        "signals": [[round(p[0], 6), round(p[1], 6)] for p in net.signals],
+        "crossings": [[round(p[0][0], 6), round(p[0][1], 6), p[1], p[2]]
+                      for p in net.crossings],
+        "supply": [[round(p[0][0], 6), round(p[0][1], 6), p[1]] for p in net.supply],
+        "transit": [[round(p[0][0], 6), round(p[0][1], 6), p[1], p[2]]
+                    for p in net.transit],
+        "landmarks": [[round(p[0][0], 6), round(p[0][1], 6), p[1], p[2]]
+                      for p in net.landmarks],
+    }
+    return bytes(buf), side
+
+
+def main():
+    os.makedirs(OUTDIR, exist_ok=True)
+    index = {}
+    for key in DISTRICTS:
+        print("── %s" % DISTRICTS[key]["name"], flush=True)
+        blob, side = export(key)
+        with open(os.path.join(OUTDIR, key + ".bin"), "wb") as f:
+            f.write(blob)
+        p = os.path.join(OUTDIR, key + ".json")
+        with io.open(p, "w", encoding="utf-8") as f:
+            json.dump(side, f, ensure_ascii=False)
+        index[key] = {"name": side["name"], "style": side["style"],
+                      "traits": side["traits"], "bbox": side["bbox"],
+                      "nodes": side["nodes"], "edges": side["edges"],
+                      "bin": round(len(blob) / 1024), "json": round(os.path.getsize(p) / 1024)}
+        print("   %d 節點、%d 路段 → bin %.2f MB ／ json %.2f MB"
+              % (side["nodes"], side["edges"], len(blob) / 1e6,
+                 os.path.getsize(p) / 1e6), flush=True)
+        planner._NET_CACHE.clear()
+        planner._NET_ORDER.clear()
+    with io.open(os.path.join(OUTDIR, "index.json"), "w", encoding="utf-8") as f:
+        json.dump({"hw": HW, "districts": index}, f, ensure_ascii=False)
+    tot = sum(v["bin"] + v["json"] for v in index.values())
+    print("\n六區合計 %.1f MB（使用者一次只會下載一區）" % (tot / 1024))
+
+
+if __name__ == "__main__":
+    main()

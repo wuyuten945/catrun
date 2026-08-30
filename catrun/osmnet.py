@@ -7,6 +7,7 @@
 """
 import hashlib
 import json
+import math
 import os
 import time
 
@@ -197,16 +198,29 @@ class RoadNet:
                 self.landmarks.append((pt, name, kind))
 
     def _index(self):
+        """建空間索引。座標先換成公尺再進 KD-tree。
+
+        原本直接餵 (經度, 緯度) 的度數，等於把經度差與緯度差當成等價——但在台中
+        1 度經度只有 1 度緯度的 0.913 倍，「最近的節點」會被算偏。誤差不大，卻會
+        讓吸附結果與正確版本不一致（跟 JS 引擎對照時才抓到這件事）。
+        """
         self.ids = list(self.G.nodes())
         pts = [self.coord[n] for n in self.ids]
-        self.tree = cKDTree([(p[1], p[0]) for p in pts]) if pts else None
-        self.sig_tree = (cKDTree([(p[1], p[0]) for p in self.signals])
-                         if self.signals else None)
+        if not pts:
+            self.tree = self.sig_tree = None
+            self._kx = self._ky = 1.0
+            return
+        lat0 = sum(p[0] for p in pts) / len(pts)
+        self._ky = 111319.49
+        self._kx = math.cos(math.radians(lat0)) * self._ky
+        self.tree = cKDTree([(p[1] * self._kx, p[0] * self._ky) for p in pts])
+        self.sig_tree = (cKDTree([(p[1] * self._kx, p[0] * self._ky)
+                                  for p in self.signals]) if self.signals else None)
 
     def nearest(self, pt, k=1):
         if self.tree is None:
             return None
-        _, i = self.tree.query((pt[1], pt[0]), k=k)
+        _, i = self.tree.query((pt[1] * self._kx, pt[0] * self._ky), k=k)
         if k == 1:
             return self.ids[int(i)]
         return [self.ids[int(x)] for x in i]

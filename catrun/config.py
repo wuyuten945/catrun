@@ -44,51 +44,36 @@ EXCLUDE_HIGHWAY = {
 GREENWAY_HINTS = ("園道", "綠道", "步道", "自行車道", "河濱", "堤防",
                   "草悟道", "美術園道", "柳川", "綠川", "筏子溪", "旱溪")
 
-# ── 2-4 各區路網特性與適配圖形風格（規格書原文）──
-DISTRICTS = {
-    "wuri": {
-        "name": "烏日區", "osm": "烏日區",
-        "bbox": (24.055, 120.575, 24.135, 120.665),
-        "style": "大型長條型、翅膀型或飛鳥型圖形",
-        "traits": "高鐵特區、三川匯流河岸；路幅開闊、河濱堤防直線長",
-        "aspect": (1.30, 2.60),      # 適配圖形的寬高比區間
-    },
-    "south": {
-        "name": "南區", "osm": "南區",
-        "bbox": (24.100, 120.648, 24.145, 120.700),
-        "style": "圓潤、流線型、自然生態類圖形",
-        "traits": "興大周邊、綠園道豐富、文教綠帶多",
-        "aspect": (0.80, 1.60),
-    },
-    "nantun": {
-        "name": "南屯區", "osm": "南屯區",
-        "bbox": (24.100, 120.585, 24.180, 120.665),
-        "style": "同心結構或對稱圖形",
-        "traits": "黎明新村同心圓／弧形街廓、單元重劃區街道方正",
-        "aspect": (0.80, 1.40),
-    },
-    "east": {
-        "name": "東區", "osm": "東區",
-        "bbox": (24.118, 120.675, 24.165, 120.730),
-        "style": "復古、同心圓或多邊形圖形",
-        "traits": "舊市區、帝國製糖廠、台糖湖濱、環狀鐵道綠廊",
-        "aspect": (0.80, 1.50),
-    },
-    "xitun": {
-        "name": "西屯區", "osm": "西屯區",
-        "bbox": (24.148, 120.595, 24.225, 120.685),
-        "style": "現代幾何、科技感、大輪廓圖形",
-        "traits": "七期／逢甲／水湳；棋盤式道路、中央公園、秋紅谷",
-        "aspect": (0.90, 1.80),
-    },
-    "west": {
-        "name": "西區", "osm": "西區",
-        "bbox": (24.128, 120.650, 24.172, 120.692),
-        "style": "圓潤、流線型、自然生態類圖形",
-        "traits": "草悟道、國美館、綠園道與柳川",
-        "aspect": (0.80, 1.60),
-    },
-}
+# ── 2-4 各區路網特性與適配圖形風格 ──
+# 前六區沿用規格書原文，其餘 23 區依實地特徵補寫。定義本身放在
+# catrun/data/districts.json（由 tools_gen_districts.py 從 OSM 真實邊界產生），
+# 不寫死在程式裡——邊界資料會更新，而且 29 個區塞在這裡沒人讀得下去。
+#
+# 兩個 bbox 是刻意分開的：
+#   bbox        行政區真實範圍，圖形的「中心」只在這裡面搜尋，路線才會落在該區
+#   fetch_bbox  路網下載範圍，往外擴。中區只有 1.3×1.4 公里，比 5 公里路線需要的
+#               圖形還小，不擴的話路線必然溢出去卻沒有路網可走
+def _load_districts():
+    import json
+    import os
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "districts.json")
+    with open(p, encoding="utf-8") as f:
+        rows = json.load(f)
+    out = {}
+    for d in rows:
+        out[d["key"]] = {
+            "name": d["name"], "osm": d["osm"],
+            "bbox": tuple(d["bbox"]), "fetch_bbox": tuple(d["fetch_bbox"]),
+            "style": d["style"], "traits": d["traits"],
+            "aspect": tuple(d["aspect"]),
+            "recommended": d.get("recommended", True),
+            "group": d.get("group", "其他"),
+            "span_km": tuple(d.get("span_km", (0, 0))),
+        }
+    return out
+
+
+DISTRICTS = _load_districts()
 
 # ── 五、補給與交通（規格書 2-5）──
 TRANSIT_WALK_M = 400.0     # 起終點距大眾運輸節點步行 5 分鐘 ≈ 400 m

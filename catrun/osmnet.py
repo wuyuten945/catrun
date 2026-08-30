@@ -122,8 +122,11 @@ class RoadNet:
         self.key, self.cfg = key, cfg
         self.G = nx.Graph()
         self.coord = {}
-        self._load_roads(cfg["bbox"], refresh)
-        self._load_poi(cfg["bbox"], refresh)
+        # 抓取範圍用 fetch_bbox（往外擴過），搜尋中心才用 bbox（行政區真實範圍）。
+        # 小區不擴的話，路線一定溢出行政區卻沒有路網可走。
+        fb = cfg.get("fetch_bbox") or cfg["bbox"]
+        self._load_roads(fb, refresh)
+        self._load_poi(fb, refresh)
         self._index()
 
     def _load_roads(self, bbox, refresh):

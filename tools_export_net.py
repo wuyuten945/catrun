@@ -28,6 +28,7 @@ import json
 import os
 import struct
 import sys
+import time
 
 sys.stdout.reconfigure(encoding="utf-8")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -104,21 +105,35 @@ def export(key, log=print):
 def main():
     os.makedirs(OUTDIR, exist_ok=True)
     index = {}
-    for key in DISTRICTS:
-        print("── %s" % DISTRICTS[key]["name"], flush=True)
-        blob, side = export(key)
+    failed, t0 = [], time.time()
+    for n, key in enumerate(DISTRICTS, 1):
+        cfg = DISTRICTS[key]
+        print("── [%d/%d] %s" % (n, len(DISTRICTS), cfg["name"]), flush=True)
+        try:
+            blob, side = export(key)
+        except Exception as e:      # noqa - 一區失敗不該中斷整批，最後統一回報
+            print("   ✗ 失敗：%r" % (e,), flush=True)
+            failed.append((key, cfg["name"], str(e)))
+            planner._NET_CACHE.clear()
+            planner._NET_ORDER.clear()
+            continue
         side["bin"] = base64.b64encode(blob).decode()
+        side["recommended"] = cfg.get("recommended", True)
+        side["group"] = cfg.get("group", "其他")
         p = os.path.join(OUTDIR, key + ".json")
         with io.open(p, "w", encoding="utf-8") as f:
             json.dump(side, f, ensure_ascii=False)
         index[key] = {"name": side["name"], "style": side["style"],
                       "traits": side["traits"], "bbox": side["bbox"],
                       "nodes": side["nodes"], "edges": side["edges"],
+                      "recommended": side["recommended"],
+                      "group": side["group"],
                       "kb": round(os.path.getsize(p) / 1024)}
         print("   %d 節點、%d 路段 → %.2f MB（主機會再 Brotli 壓縮）"
               % (side["nodes"], side["edges"], os.path.getsize(p) / 1e6), flush=True)
         planner._NET_CACHE.clear()
         planner._NET_ORDER.clear()
+        time.sleep(3)       # 對 Overpass 客氣一點，連續 29 個大查詢容易被限流
     with io.open(os.path.join(OUTDIR, "index.json"), "w", encoding="utf-8") as f:
         json.dump({"hw": HW, "districts": index}, f, ensure_ascii=False)
     tot = sum(v["kb"] for v in index.values())

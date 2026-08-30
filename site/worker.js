@@ -353,15 +353,17 @@ self.onmessage = function (ev) {
 function loadNet(key) {
   if (LOADED[key]) return Promise.resolve(LOADED[key]);
   post("progress", { text: "下載路網…", p: 0.02 });
-  return Promise.all([
-    fetch("net/" + key + ".bin").then(function (r) {
-      if (!r.ok) throw new Error("路網下載失敗（" + r.status + "）");
-      return r.arrayBuffer();
-    }),
-    fetch("net/" + key + ".json").then(function (r) { return r.json(); })
-  ]).then(function (v) {
+  return fetch("net/" + key + ".json").then(function (r) {
+    if (!r.ok) throw new Error("路網下載失敗（" + r.status + "）");
+    return r.json();
+  }).then(function (side) {
     post("progress", { text: "建立索引…", p: 0.06 });
-    var N = buildNet(v[0], v[1]);
+    /* 路網本體是 base64 夾在 JSON 裡——靜態主機不壓縮 .bin，包進 JSON 才吃得到
+       Brotli，實際傳輸量差一倍。 */
+    var s = atob(side.bin), n = s.length, u = new Uint8Array(n);
+    for (var i = 0; i < n; i++) u[i] = s.charCodeAt(i);
+    side.bin = null;
+    var N = buildNet(u.buffer, side);
     LOADED[key] = N;
     return N;
   });

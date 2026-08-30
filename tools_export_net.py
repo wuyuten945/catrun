@@ -5,9 +5,11 @@
 瀏覽器沒辦法打 Overpass（會被當成公共提款機，也慢），所以路網要事先
 壓成緊湊格式放成靜態檔，使用者選到哪一區才下載哪一區。
 
-每區兩個檔：
-  net/<key>.bin   路網本體（二進位，見下方格式）
-  net/<key>.json  路名表與沿線設施（號誌／補給／轉運／地標／穿越點）
+每區一個 net/<key>.json，內含 base64 的路網本體與路名表、沿線設施。
+
+為什麼把二進位 base64 塞進 JSON 而不是分開放 .bin：靜態主機不壓縮
+application/octet-stream，raw .bin 要下載 1.3 MB；包進 JSON 之後主機會自動
+Brotli 壓縮，實際傳輸約 0.7 MB。base64 撐大的 33% 壓回去還有剩。
 
 .bin 格式（little-endian）：
   magic "CRG2"                          4
@@ -20,6 +22,7 @@
                   name_id               u16          路名索引（0=無名）
                   flags                 u16          bit0-4 道路分級、bit5-6 照明
 """
+import base64
 import io
 import json
 import os
@@ -104,23 +107,21 @@ def main():
     for key in DISTRICTS:
         print("── %s" % DISTRICTS[key]["name"], flush=True)
         blob, side = export(key)
-        with open(os.path.join(OUTDIR, key + ".bin"), "wb") as f:
-            f.write(blob)
+        side["bin"] = base64.b64encode(blob).decode()
         p = os.path.join(OUTDIR, key + ".json")
         with io.open(p, "w", encoding="utf-8") as f:
             json.dump(side, f, ensure_ascii=False)
         index[key] = {"name": side["name"], "style": side["style"],
                       "traits": side["traits"], "bbox": side["bbox"],
                       "nodes": side["nodes"], "edges": side["edges"],
-                      "bin": round(len(blob) / 1024), "json": round(os.path.getsize(p) / 1024)}
-        print("   %d 節點、%d 路段 → bin %.2f MB ／ json %.2f MB"
-              % (side["nodes"], side["edges"], len(blob) / 1e6,
-                 os.path.getsize(p) / 1e6), flush=True)
+                      "kb": round(os.path.getsize(p) / 1024)}
+        print("   %d 節點、%d 路段 → %.2f MB（主機會再 Brotli 壓縮）"
+              % (side["nodes"], side["edges"], os.path.getsize(p) / 1e6), flush=True)
         planner._NET_CACHE.clear()
         planner._NET_ORDER.clear()
     with io.open(os.path.join(OUTDIR, "index.json"), "w", encoding="utf-8") as f:
         json.dump({"hw": HW, "districts": index}, f, ensure_ascii=False)
-    tot = sum(v["bin"] + v["json"] for v in index.values())
+    tot = sum(v["kb"] for v in index.values())
     print("\n六區合計 %.1f MB（使用者一次只會下載一區）" % (tot / 1024))
 
 

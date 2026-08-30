@@ -1,0 +1,358 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>圖形路跑路線規劃系統</title><style>
+*{box-sizing:border-box}
+body{margin:0;background:#eef1f6;color:#1a2230;
+ font-family:"Microsoft JhengHei","PingFang TC",system-ui,sans-serif;line-height:1.7}
+.wrap{max-width:1180px;margin:0 auto;padding:18px 14px 60px}
+h1{font-size:26px;margin:6px 0 2px}
+.sub{color:#5a6a7a;font-size:14px;margin-bottom:16px}
+.tile{background:#fff;border:1px solid #dde3ee;border-radius:14px;padding:16px;
+ margin-bottom:14px;box-shadow:0 1px 3px rgba(20,30,60,.05)}
+.tile h2{font-size:18px;margin:0 0 12px;color:#1a2230}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+label{display:block;font-size:13px;color:#5a6a7a;margin-bottom:5px}
+select,input{width:100%;padding:11px;border:1px solid #cfd7e6;border-radius:9px;
+ font-size:15px;background:#fff;color:#1a2230}
+input[type=file]{padding:8px;font-size:13px}
+button{padding:13px 20px;border:0;border-radius:10px;font-size:16px;font-weight:700;
+ cursor:pointer;background:#d6001c;color:#fff}
+button.ghost{background:#fff;color:#1a2230;border:1px solid #cfd7e6;font-weight:600}
+button.small{padding:9px 15px;font-size:14px}
+button:disabled{opacity:.5;cursor:default}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px}
+.tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.tab{border:1px solid #cfd7e6;background:#f4f7fc;color:#5a6a7a;border-radius:999px;
+ padding:7px 16px;font-size:14px;font-weight:600;cursor:pointer}
+.tab[aria-selected="true"]{background:#1a2230;border-color:#1a2230;color:#fff}
+.dchips{display:flex;flex-wrap:wrap;gap:8px}
+.dchip{border:1px solid #cfd7e6;background:#fff;color:#1a2230;border-radius:999px;
+ padding:8px 15px;font-size:14px;cursor:pointer;font-family:inherit;line-height:1.4}
+.dchip[aria-pressed="true"]{background:#d6001c;border-color:#d6001c;color:#fff;
+ font-weight:700}
+.log{background:#101722;color:#cfe3ff;border-radius:10px;padding:12px;font-size:13px;
+ font-family:Consolas,monospace;max-height:230px;overflow:auto;white-space:pre-wrap}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{border-bottom:1px solid #e6ebf3;padding:7px 6px;text-align:left;color:#1a2230}
+th{color:#5a6a7a;font-weight:600;font-size:13px}
+.big{font-size:40px;font-weight:800;color:#d6001c;line-height:1}
+.bar{height:9px;background:#e9edf4;border-radius:5px;overflow:hidden;margin-top:5px}
+.bar i{display:block;height:100%;background:#2f6fed}
+.chip{display:inline-block;background:#eef2fb;border:1px solid #d7e0f0;border-radius:999px;
+ padding:3px 11px;font-size:13px;margin:2px 4px 2px 0;color:#1a2230}
+img{max-width:100%;border-radius:10px;border:1px solid #dde3ee}
+.hintbox{background:#fff7e6;border:1px solid #f0d9a8;border-radius:10px;padding:10px;
+ font-size:13px;color:#6a4a10;margin-top:10px}
+.errbox{background:#fdecee;border:1px solid #f0aab4;border-radius:10px;padding:10px;
+ font-size:13.5px;color:#8a1020;margin-top:10px}
+.okbox{background:#eaf7ee;border:1px solid #a8d8b6;border-radius:10px;padding:10px;
+ font-size:13.5px;color:#14532d;margin-top:10px}
+.scroll{overflow-x:auto}
+a.dl{display:inline-block;margin:4px 8px 4px 0;padding:9px 14px;border-radius:9px;
+ background:#f2f5fb;border:1px solid #d7e0f0;color:#1a2230;text-decoration:none;font-size:14px}
+.rank td:first-child{font-weight:700;font-size:16px}
+.rank tr{cursor:pointer}
+.rank tr:hover td{background:#f6f9fe}
+.trace-wrap{display:grid;gap:14px;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);
+ align-items:start}
+@media(max-width:720px){.trace-wrap{grid-template-columns:1fr}}
+</style></head><body><div class="wrap">
+<h1>台中市圖形路跑路線規劃系統</h1>
+<div class="sub">依《台中市圖形路跑路線規劃規格書》建置 ・ 路網來源 OpenStreetMap</div>
+
+<div class="tile"><h2>一、圖形</h2>
+  <div class="tabs">
+    <button class="tab" id="tab-lib" aria-selected="true" onclick="pickTab('lib')">內建圖形</button>
+    <button class="tab" id="tab-up" aria-selected="false" onclick="pickTab('up')">上傳手繪圖</button>
+  </div>
+
+  <div id="pane-lib">
+    <div class="grid"><div><label>選一個圖形</label><select id="s"></select></div></div>
+    <div class="hintbox" id="snote"></div>
+  </div>
+
+  <div id="pane-up" style="display:none">
+    <div class="trace-wrap">
+      <div>
+        <div class="grid" style="grid-template-columns:1fr">
+          <div><label>手繪圖檔（白底黑線最好，JPG/PNG，12 MB 以內）</label>
+            <input type="file" id="f" accept="image/*"/></div>
+          <div><label>圖形名稱</label><input id="fname" placeholder="例如：我的貓"/></div>
+        </div>
+        <div class="grid" style="margin-top:12px">
+          <div><label>缺口補償（像素）</label><input id="fclose" type="number" value="6" min="0" max="30"/></div>
+          <div><label>簡化後點數</label><input id="fpts" type="number" value="64" min="20" max="160"/></div>
+        </div>
+        <div class="row"><button class="small" id="btrace">描圖</button>
+          <span id="tst" style="color:#5a6a7a;font-size:14px"></span></div>
+        <div class="hintbox">線條沒接起來的話灌水會漏光、描不出東西——把「缺口補償」調大（8～12）再試。
+          點數越多細節越多，但也越容易被巷弄雜訊帶偏，64 上下最穩。</div>
+        <div id="terr"></div>
+        <div id="mine" style="margin-top:14px"></div>
+      </div>
+      <div id="tprev"></div>
+    </div>
+  </div>
+</div>
+
+<div class="tile"><h2>二、規劃條件</h2>
+  <label>行政區（可複選，選多個會逐區規劃並排名）</label>
+  <div class="dchips" id="dchips"></div>
+  <div class="row"><button class="ghost small" onclick="pickAllD(true)">全選</button>
+    <button class="ghost small" onclick="pickAllD(false)">全部取消</button></div>
+  <div class="grid" style="margin-top:14px">
+    <div><label>里程級距</label><select id="l"></select></div>
+    <div><label>指定中心（只在單選一區時有效，lat,lng）</label>
+      <input id="c" placeholder="留空＝自動搜尋"/></div>
+  </div>
+  <div class="row"><button id="go">開始規劃</button>
+    <span id="st" style="color:#5a6a7a;font-size:14px"></span></div>
+  <div class="hintbox" id="note"></div>
+</div>
+
+<div class="tile" id="logtile" style="display:none"><h2>執行紀錄</h2>
+  <div class="log" id="log"></div></div>
+<div id="result"></div>
+</div>
+
+<script>
+var META=null, TIMER=null, PICKED={}, UPKEY=null, MODE="lib";
+function $(i){return document.getElementById(i)}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){
+ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function shapeKey(){ return MODE==="up" ? UPKEY : $("s").value; }
+
+function pickTab(m){
+  MODE=m;
+  $("tab-lib").setAttribute("aria-selected", m==="lib");
+  $("tab-up").setAttribute("aria-selected", m==="up");
+  $("pane-lib").style.display = m==="lib" ? "" : "none";
+  $("pane-up").style.display  = m==="up"  ? "" : "none";
+  note();
+}
+function pickAllD(on){
+  META.districts.forEach(function(x){ PICKED[x.key]=on; });
+  drawD(); note();
+}
+function drawD(){
+  $("dchips").innerHTML = META.districts.map(function(x){
+    return '<button class="dchip" data-k="'+x.key+'" aria-pressed="'+(!!PICKED[x.key])+'">'
+      + esc(x.name)+'</button>';
+  }).join("");
+  Array.prototype.forEach.call($("dchips").querySelectorAll(".dchip"), function(b){
+    b.onclick=function(){ PICKED[b.dataset.k]=!PICKED[b.dataset.k]; drawD(); note(); };
+  });
+}
+function chosen(){ return META.districts.map(function(x){return x.key})
+  .filter(function(k){return PICKED[k]}); }
+
+fetch("/api/meta").then(function(r){return r.json()}).then(function(m){
+  META=m;
+  var s=$("s"); m.shapes.forEach(function(x){
+    var o=document.createElement("option"); o.value=x.key; o.textContent=x.name; s.appendChild(o)});
+  var l=$("l"); m.levels.forEach(function(x){
+    var o=document.createElement("option"); o.value=x.key;
+    o.textContent=x.label+" "+x.min+"–"+x.max+" km"; l.appendChild(o)});
+  PICKED[m.districts[0].key]=true;
+  drawD(); s.onchange=note; note(); drawMine();
+});
+
+/* 上傳的圖形會一直累積，給個地方刪掉 */
+function drawMine(){
+  var mine=(META.shapes||[]).filter(function(x){return x.key.indexOf("user_")===0});
+  if(!mine.length){ $("mine").innerHTML=""; return; }
+  $("mine").innerHTML='<label>已上傳的圖形</label>'+mine.map(function(x){
+    return '<div style="display:flex;align-items:center;gap:8px;'
+      +'border-top:1px solid #e6ebf3;padding:7px 2px">'
+      +'<span style="flex:1">'+esc(x.name)+'</span>'
+      +'<button class="ghost small" style="color:#c00;border-color:#c00" '
+      +'onclick="delShape(\''+x.key+'\')">刪除</button></div>';
+  }).join("");
+}
+function delShape(k){
+  if(!confirm("刪除這個圖形？已經產生的路線檔不受影響。")) return;
+  fetch("/api/shape/delete",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({key:k})})
+   .then(function(r){return r.json()})
+   .then(function(){ if(UPKEY===k){ UPKEY=null; $("tprev").innerHTML=""; }
+     return fetch("/api/meta").then(function(r){return r.json()}); })
+   .then(function(m){
+     META=m;
+     var s=$("s"); s.innerHTML="";
+     m.shapes.forEach(function(x){ var o=document.createElement("option");
+       o.value=x.key; o.textContent=x.name; s.appendChild(o); });
+     drawMine(); note();
+   });
+}
+
+function note(){
+  if(!META) return;
+  var ks=chosen();
+  var sk=shapeKey();
+  var sh=META.shapes.filter(function(x){return x.key===sk})[0];
+  if(MODE==="lib" && sh){ $("snote").innerHTML="<b>"+esc(sh.name)+"</b>："+esc(sh.note); }
+  if(!ks.length){ $("note").innerHTML="⚠ 還沒選行政區。"; return; }
+  if(MODE==="up" && !UPKEY){ $("note").innerHTML="⚠ 還沒描圖。先在上面選檔案按「描圖」。"; return; }
+  var t = "已選 "+ks.length+" 區：" + ks.map(function(k){
+    return META.districts.filter(function(x){return x.key===k})[0].name; }).join("、");
+  if(ks.length>1){ t += "。逐區規劃後依綜合評分排名，每多一區約多 30~60 秒。"; }
+  if(sh && sh.fits){
+    var bad = ks.filter(function(k){ return sh.fits.indexOf(k)<0; });
+    if(bad.length){ t += "<br/>⚠ 規格書 2-4 建議 " + bad.map(function(k){
+      var d=META.districts.filter(function(x){return x.key===k})[0];
+      return d.name+"走「"+d.style+"」"; }).join("、")
+      + "，此圖形不在建議清單內，仍可規劃但區域特性分數會偏低。"; }
+  }
+  $("note").innerHTML=t;
+}
+
+/* ── 描圖 ── */
+$("btrace") && ($("btrace").onclick=function(){
+  var f=$("f").files[0];
+  if(!f){ $("terr").innerHTML='<div class="errbox">請先選一張圖檔。</div>'; return; }
+  var fd=new FormData();
+  fd.append("image", f);
+  fd.append("name", $("fname").value || f.name.replace(/\.[^.]+$/,""));
+  fd.append("close", $("fclose").value);
+  fd.append("points", $("fpts").value);
+  $("btrace").disabled=true; $("tst").textContent="描圖中…";
+  $("terr").innerHTML="";
+  fetch("/api/trace",{method:"POST",body:fd})
+   .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j}})})
+   .then(function(res){
+     $("btrace").disabled=false; $("tst").textContent="";
+     if(!res.ok){ $("terr").innerHTML='<div class="errbox">'+esc(res.j.error)+'</div>';
+       $("tprev").innerHTML=""; return; }
+     var j=res.j; UPKEY=j.key;
+     var info=Object.keys(j.info).map(function(k){
+       return '<span class="chip">'+esc(k)+'：'+esc(j.info[k])+'</span>'}).join("");
+     $("tprev").innerHTML='<img src="'+j.preview+'" alt="描圖結果"/>'
+       +'<div style="margin-top:8px">'+info+'</div>'
+       +'<div class="okbox">已登錄為圖形「'+esc(j.name)+'」。'
+       +'<b>先確認上圖真的是你要的輪廓</b>，不對就調參數重描；對了就往下選行政區。</div>';
+     note();
+     fetch("/api/meta").then(function(r){return r.json()}).then(function(m){
+       META=m;
+       var sel=$("s"); sel.innerHTML="";
+       m.shapes.forEach(function(x){ var o=document.createElement("option");
+         o.value=x.key; o.textContent=x.name; sel.appendChild(o); });
+       drawMine();
+     });
+   })
+   .catch(function(e){ $("btrace").disabled=false; $("tst").textContent="";
+     $("terr").innerHTML='<div class="errbox">'+esc(e.message)+'</div>'; });
+});
+
+/* ── 規劃 ── */
+$("go").onclick=function(){
+  var ks=chosen();
+  if(!ks.length){ $("st").textContent="請先選行政區"; return; }
+  var sk=shapeKey();
+  if(!sk){ $("st").textContent="請先選圖形或描圖"; return; }
+  $("go").disabled=true;
+  $("st").textContent = ks.length>1 ? ("規劃中…共 "+ks.length+" 區，請稍候")
+    : "規劃中…第一次跑某個行政區要載入路網";
+  $("logtile").style.display=""; $("log").textContent=""; $("result").innerHTML="";
+  var url = ks.length>1 ? "/api/plan-multi" : "/api/plan";
+  var body = ks.length>1
+    ? {districts:ks, shape:sk, level:$("l").value}
+    : {district:ks[0], shape:sk, level:$("l").value, center:$("c").value};
+  fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(body)})
+   .then(function(r){return r.json()})
+   .then(function(j){ if(j.error){ fail(j.error); } else { poll(j.job); } });
+};
+function fail(msg){
+  $("st").textContent="失敗"; $("go").disabled=false;
+  $("result").innerHTML='<div class="tile"><h2>失敗</h2><div class="errbox">'
+    +esc(msg)+'</div></div>';
+}
+function poll(job){
+  clearInterval(TIMER);
+  TIMER=setInterval(function(){
+    fetch("/api/job/"+job).then(function(r){return r.json()}).then(function(j){
+      $("log").textContent=(j.log||[]).join("\n"); $("log").scrollTop=1e6;
+      if(j.state==="done"){ clearInterval(TIMER); $("go").disabled=false;
+        $("st").textContent="完成";
+        if(j.multi){ renderMulti(j); } else { renderOne(j); } }
+      else if(j.state==="error"){ clearInterval(TIMER); fail(j.error); }
+    });
+  },900);
+}
+
+function scoreTile(sc, labels){
+  var h='<div class="tile"><h2>綜合評分</h2><div class="grid">';
+  h+='<div><div class="big">'+sc.total+'</div><div class="sub">／ 100 分</div></div>';
+  for(var k in sc.parts){
+    h+='<div><label>'+esc(labels[k])+'（權重 '+sc.weights[k]+'%）</label>'
+      +'<b style="font-size:20px">'+sc.parts[k]+'</b>'
+      +'<div class="bar"><i style="width:'+sc.parts[k]+'%"></i></div></div>';
+  }
+  h+='</div>';
+  for(var k2 in sc.detail){
+    h+='<div style="margin-top:12px"><b>'+esc(labels[k2])+'</b><div>';
+    var dd=sc.detail[k2];
+    for(var a in dd){ h+='<span class="chip">'+esc(a)+'：'+esc(dd[a])+'</span>' }
+    h+='</div></div>';
+  }
+  return h+'</div>';
+}
+function tables(r){
+  var h='<div class="tile"><h2>路名循序導航表</h2><div class="scroll"><table>'
+    +'<tr><th>#</th><th>累計 km</th><th>動作</th><th>路名</th><th>該段</th></tr>';
+  r.cues.forEach(function(c){ h+='<tr><td>'+c.seq+'</td><td>'+c.km.toFixed(2)+'</td><td>'
+    +esc(c.action)+'</td><td>'+esc(c.road)+'</td><td>'+c.len_m+' m</td></tr>' });
+  h+='</table></div></div><div class="tile"><h2>安全提醒</h2>';
+  if(r.notes.length){
+    h+='<div class="scroll"><table><tr><th>累計 km</th><th>類別</th><th>提醒</th></tr>';
+    r.notes.forEach(function(n){ h+='<tr><td>'+n.km.toFixed(2)+'</td><td>'+esc(n.type)
+      +'</td><td>'+esc(n.text)+'</td></tr>' });
+    h+='</table></div>';
+  } else { h+='<div class="sub">沿線未偵測到需特別標記的路段。</div>'; }
+  h+='</div><div class="tile"><h2>地標打卡點</h2>';
+  if(r.marks.length){
+    h+='<div class="scroll"><table><tr><th>累計 km</th><th>地標</th><th>類型</th><th>距路線</th></tr>';
+    r.marks.slice(0,3).forEach(function(m){ h+='<tr><td>'+m[1].toFixed(2)+'</td><td>'
+      +esc(m[2])+'</td><td>'+esc(m[3])+'</td><td>'+m[0]+' m</td></tr>' });
+    h+='</table></div>';
+  } else { h+='<div class="sub">沿線 180 公尺內沒有具名地標。</div>'; }
+  return h+'</div>';
+}
+function mapTile(id){
+  var h='<div class="tile"><h2>路線圖</h2><img src="/api/img/'+id+'?t='+Date.now()+'"/>';
+  h+='<div style="margin-top:10px">';
+  ["gpx","kml","csv","md","png"].forEach(function(x){
+    h+='<a class="dl" href="/api/file/'+id+'/'+x+'">下載 '+x.toUpperCase()+'</a>' });
+  return h+'</div></div>';
+}
+function renderOne(j){
+  var r=j.result;
+  $("result").innerHTML = scoreTile(r.score, r.labels) + mapTile(j.id) + tables(r);
+}
+function renderMulti(j){
+  var rows=j.multi, L=j.labels;
+  var h='<div class="tile"><h2>跨區排名（'+rows.length+' 區）</h2><div class="scroll">'
+    +'<table class="rank"><tr><th>名次</th><th>行政區</th><th>里程</th><th>總分</th>';
+  ["shape","safety","distance","district","logistics"].forEach(function(k){
+    h+='<th>'+esc(L[k])+'</th>' });
+  h+='</tr>';
+  rows.forEach(function(r,i){
+    h+='<tr onclick="showOne('+i+')"><td>'+(i+1)+'</td><td>'+esc(r.meta.district_name)
+      +'</td><td>'+r.meta.km.toFixed(2)+' km</td><td><b>'+r.score.total+'</b></td>';
+    ["shape","safety","distance","district","logistics"].forEach(function(k){
+      h+='<td>'+r.score.parts[k].toFixed(1)+'</td>' });
+    h+='</tr>';
+  });
+  h+='</table></div><div class="sub" style="margin-top:8px">點任一列看該區的完整結果。</div></div>';
+  window._MULTI=rows; window._L=L;
+  $("result").innerHTML = h + '<div id="one"></div>';
+  showOne(0);
+}
+function showOne(i){
+  var r=window._MULTI[i];
+  $("one").innerHTML = '<h2 style="margin:18px 0 10px">'+esc(r.meta.title)+'</h2>'
+    + scoreTile(Object.assign({}, r.score), window._L)
+    + mapTile(r.id) + tables(r);
+  $("one").scrollIntoView({behavior:"smooth", block:"start"});
+}
+</script></body></html>

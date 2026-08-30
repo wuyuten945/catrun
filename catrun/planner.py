@@ -9,11 +9,21 @@ from .osmnet import RoadNet
 
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "out")
 _NET_CACHE = {}
+_NET_ORDER = []
+
+
+NET_KEEP = 2      # 同時保留幾區的路網。一區約 160 MB，六區會吃掉近 1 GB
 
 
 def get_net(district, refresh=False, log=None):
-    """同一個行政區的路網在行程內只建一次——建圖比規劃本身還花時間。"""
+    """同一個行政區的路網在行程內只建一次——建圖比規劃本身還花時間。
+
+    但不能無限留：一區約 160 MB，跨區排名一次掃六區就是 1 GB。
+    保留最近用到的兩區，其餘丟掉重讀（從快取重讀約 20~40 秒，可以接受）。
+    """
     if district in _NET_CACHE and not refresh:
+        _NET_ORDER.remove(district)
+        _NET_ORDER.append(district)
         return _NET_CACHE[district]
     if log:
         log("讀取 %s 路網…" % DISTRICTS[district]["name"])
@@ -25,6 +35,14 @@ def get_net(district, refresh=False, log=None):
             % (st["nodes"], st["edges"], st["signals"], st["supply"],
                st["landmarks"], time.time() - t0))
     _NET_CACHE[district] = net
+    if district in _NET_ORDER:
+        _NET_ORDER.remove(district)
+    _NET_ORDER.append(district)
+    while len(_NET_ORDER) > NET_KEEP:
+        drop = _NET_ORDER.pop(0)
+        _NET_CACHE.pop(drop, None)
+        if log:
+            log("釋放 %s 路網記憶體" % DISTRICTS[drop]["name"])
     return net
 
 
